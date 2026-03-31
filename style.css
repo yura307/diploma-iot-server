@@ -1,0 +1,46 @@
+/* Базові налаштування сторінки */
+body { 
+    background-color: #f8f9fa; 
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+}
+
+/* Навігаційна панель */
+.navbar { 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+}
+
+/* Налаштування карток з показниками */
+.card { 
+    border: none; 
+    border-radius: 12px; 
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
+    margin-bottom: 20px; 
+    transition: transform 0.2s ease-in-out; 
+}
+
+.card:hover { 
+    transform: translateY(-2px); 
+}
+
+/* Іконки та бейджі статусу */
+.stat-icon { 
+    font-size: 2.5rem; 
+    opacity: 0.8; 
+}
+
+.status-badge { 
+    font-size: 1rem; 
+    padding: 8px 12px; 
+}
+
+/* Контейнери для графіків та журналу */
+.chart-container { 
+    position: relative; 
+    height: 300px; 
+    width: 100%; 
+}
+
+.log-table-container { 
+    max-height: 300px; 
+    overflow-y: auto; 
+}
