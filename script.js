@@ -52,7 +52,7 @@ const vibroChart = new Chart(ctxVibro, {
 });
 
 // --- ПІДКЛЮЧЕННЯ WEBSOCKET ---
-const ws = new WebSocket("ws://localhost:8000/ws"); // Адреса Python-сервера
+const ws = new WebSocket("wss://diploma-iot-server.onrender.com/ws"); // Адреса Python-сервера
 
 ws.onopen = () => {
     document.getElementById('connectionStatus').classList.replace('text-danger', 'text-success');
