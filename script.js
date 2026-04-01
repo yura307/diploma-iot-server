@@ -1,120 +1,102 @@
-// --- КОНФІГУРАЦІЯ (Налаштовано під промислові норми) ---
-const THRESHOLD_NOISE = 75;      // Починаємо логувати шум від 75 дБ
-const THRESHOLD_VIBRO_WARN = 2.8; // Жовта зона (Увага)
-const THRESHOLD_VIBRO_CRIT = 7.1; // Червона зона (Небезпека)
+// --- КОНФІГУРАЦІЯ ---
+const THRESHOLD_NOISE = 75;      
+const THRESHOLD_VIBRO_WARN = 2.8; 
+const THRESHOLD_VIBRO_CRIT = 7.1; 
+const MAX_LOG_ROWS = 10; 
 
-const MAX_LOG_ROWS = 10; // Скільки останніх аномалій тримати в списку
+// Змінна для запобігання спаму (записуємо аномалію не частіше ніж раз на 2 секунди)
+let lastLogTime = 0; 
+const LOG_COOLDOWN = 2000; 
 
-// Спільні налаштування графіків
 const commonOptions = { 
     responsive: true, 
     maintainAspectRatio: false, 
     animation: { duration: 0 }, 
-    scales: { 
-        x: { display: true }, 
-        y: { beginAtZero: true } 
-    } 
+    scales: { x: { display: true }, y: { beginAtZero: true } } 
 };
 
 // --- ІНІЦІАЛІЗАЦІЯ ГРАФІКІВ ---
-const ctxNoise = document.getElementById('noiseChart').getContext('2d');
-const noiseChart = new Chart(ctxNoise, {
+const noiseChart = new Chart(document.getElementById('noiseChart'), {
     type: 'line',
-    data: { 
-        labels: [], 
-        datasets: [{ 
-            label: 'Рівень шуму (дБ)', 
-            borderColor: '#0d6efd', 
-            backgroundColor: 'rgba(13, 110, 253, 0.1)', 
-            data: [], 
-            fill: true, 
-            tension: 0.4 
-        }] 
-    },
+    data: { labels: [], datasets: [{ label: 'Шум (дБ)', borderColor: '#0d6efd', data: [], fill: true, tension: 0.4 }] },
     options: commonOptions
 });
 
-const ctxVibro = document.getElementById('vibroChart').getContext('2d');
-const vibroChart = new Chart(ctxVibro, {
+const vibroChart = new Chart(document.getElementById('vibroChart'), {
     type: 'line',
-    data: { 
-        labels: [], 
-        datasets: [{ 
-            label: 'Вібрація (mm/s)', 
-            borderColor: '#ffc107', 
-            backgroundColor: 'rgba(255, 193, 7, 0.1)', 
-            data: [], 
-            fill: true, 
-            tension: 0.4 
-        }] 
-    },
+    data: { labels: [], datasets: [{ label: 'Вібрація (mm/s)', borderColor: '#ffc107', data: [], fill: true, tension: 0.4 }] },
     options: commonOptions
 });
 
-// --- ПІДКЛЮЧЕННЯ WEBSOCKET ---
+// --- ПІДКЛЮЧЕННЯ ---
 const ws = new WebSocket("wss://diploma-iot-server.onrender.com/ws");
 
 ws.onopen = () => {
-    console.log("Connected to server");
-    document.getElementById('connectionStatus').innerText = "Підключено";
-    document.getElementById('connectionStatus').className = "text-success fw-bold";
+    console.log("WebSocket Connected ✅");
+    document.getElementById('connectionStatus').classList.replace('text-danger', 'text-success');
 };
 
 ws.onmessage = function(event) {
     const data = JSON.parse(event.data);
     const currentTime = new Date().toLocaleTimeString();
 
-    // Оновлення числових показників
-    document.getElementById('noiseValue').innerText = Math.round(data.noise);
-    document.getElementById('vibroValue').innerText = Number(data.vibration).toFixed(2);
+    // ПРИМУСОВО ПЕРЕТВОРЮЄМО В ЧИСЛА
+    const noise = parseFloat(data.noise);
+    const vibration = parseFloat(data.vibration);
+
+    document.getElementById('noiseValue').innerText = noise.toFixed(0);
+    document.getElementById('vibroValue').innerText = vibration.toFixed(2);
 
     let isAnomaly = false;
+    let anomalyMessage = "";
+    let anomalyLevel = "";
 
     // 1. Аналіз шуму
-    if (data.noise > THRESHOLD_NOISE) {
+    if (noise > THRESHOLD_NOISE) {
         document.getElementById('noiseStatus').innerHTML = '<span class="badge bg-danger">ШУМНО!</span>';
-        logAnomaly(currentTime, 'Перевищення шуму', data.noise + ' дБ', 'danger');
+        anomalyMessage = "Перевищення шуму";
+        anomalyLevel = "danger";
         isAnomaly = true;
     } else {
         document.getElementById('noiseStatus').innerHTML = '<span class="badge bg-success">Норма</span>';
     }
 
-    // 2. Аналіз вібрації (Жовта та Червона зони)
-    if (data.vibration > THRESHOLD_VIBRO_CRIT) {
+    // 2. Аналіз вібрації
+    if (vibration > THRESHOLD_VIBRO_CRIT) {
         document.getElementById('vibroStatus').innerHTML = '<span class="badge bg-danger">КРИТИЧНО!</span>';
-        logAnomaly(currentTime, 'АВАРІЙНА ВІБРАЦІЯ', data.vibration.toFixed(2) + ' mm/s', 'danger');
+        anomalyMessage = "АВАРІЙНА ВІБРАЦІЯ";
+        anomalyLevel = "danger";
         isAnomaly = true;
-    } else if (data.vibration > THRESHOLD_VIBRO_WARN) {
+    } else if (vibration > THRESHOLD_VIBRO_WARN) {
         document.getElementById('vibroStatus').innerHTML = '<span class="badge bg-warning text-dark">УВАГА</span>';
-        logAnomaly(currentTime, 'Підвищена вібрація', data.vibration.toFixed(2) + ' mm/s', 'warning');
+        anomalyMessage = "Підвищена вібрація";
+        anomalyLevel = "warning";
         isAnomaly = true;
     } else {
         document.getElementById('vibroStatus').innerHTML = '<span class="badge bg-success">Норма</span>';
     }
 
-    // 3. Загальний стан
+    // 3. Запис у журнал (з перевіркою часу)
+    const now = Date.now();
+    if (isAnomaly && (now - lastLogTime > LOG_COOLDOWN)) {
+        console.log("⚠️ Аномалія зафіксована:", anomalyMessage);
+        logAnomaly(currentTime, anomalyMessage, (isAnomaly ? (anomalyMessage.includes("шум") ? noise : vibration.toFixed(2)) : ""), anomalyLevel);
+        lastLogTime = now;
+    }
+
+    // 4. Стан системи
     const sysState = document.getElementById('systemState');
     if (isAnomaly) {
-        sysState.innerText = "УВАГА: ВИЯВЛЕНО АНОМАЛІЮ";
+        sysState.innerText = "ВИЯВЛЕНО АНОМАЛІЮ";
         sysState.className = "text-danger fw-bold";
     } else {
-        sysState.innerText = "Система працює стабільно";
+        sysState.innerText = "Система стабільна";
         sysState.className = "text-success fw-bold";
     }
 
-    updateChart(noiseChart, currentTime, data.noise);
-    updateChart(vibroChart, currentTime, data.vibration);
+    updateChart(noiseChart, currentTime, noise);
+    updateChart(vibroChart, currentTime, vibration);
 };
-
-function updateChart(chart, label, data) {
-    chart.data.labels.push(label);
-    chart.data.datasets[0].data.push(data);
-    if (chart.data.labels.length > 20) { 
-        chart.data.labels.shift();
-        chart.data.datasets[0].data.shift();
-    }
-    chart.update();
-}
 
 function logAnomaly(time, eventText, value, level) {
     const tableBody = document.getElementById('logBody');
@@ -129,9 +111,17 @@ function logAnomaly(time, eventText, value, level) {
                  </tr>`;
     
     tableBody.insertAdjacentHTML('afterbegin', row);
-
-    // Видаляємо старі записи, щоб журнал не безкінечно ріс
     if (tableBody.rows.length > MAX_LOG_ROWS) {
         tableBody.deleteRow(MAX_LOG_ROWS);
     }
+}
+
+function updateChart(chart, label, data) {
+    chart.data.labels.push(label);
+    chart.data.datasets[0].data.push(data);
+    if (chart.data.labels.length > 20) { 
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+    }
+    chart.update();
 }
