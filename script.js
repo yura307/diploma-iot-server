@@ -4,14 +4,17 @@ const THRESHOLD_VIBRO_WARN = 2.8;
 const THRESHOLD_VIBRO_CRIT = 7.1; 
 const MAX_LOG_ROWS = 10; 
 
-// Змінна для запобігання спаму (записуємо аномалію не частіше ніж раз на 2 секунди)
 let lastLogTime = 0; 
 const LOG_COOLDOWN = 2000; 
 
+// 1. АНІМАЦІЯ ГРАФІКІВ: Плавний перехід за 300 мс (синхронно з ESP32)
 const commonOptions = { 
     responsive: true, 
     maintainAspectRatio: false, 
-    animation: { duration: 0 }, 
+    animation: { 
+        duration: 300, 
+        easing: 'linear' 
+    }, 
     scales: { x: { display: true }, y: { beginAtZero: true } } 
 };
 
@@ -28,6 +31,23 @@ const vibroChart = new Chart(document.getElementById('vibroChart'), {
     options: commonOptions
 });
 
+// --- ФУНКЦІЯ ПЛАВНОЇ ЗМІНИ ЧИСЕЛ ---
+function animateValue(obj, start, end, duration, isFloat) {
+    let startTimestamp = null;
+    const step = (timestamp) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        const currentVal = start + progress * (end - start);
+        
+        obj.innerText = isFloat ? currentVal.toFixed(2) : currentVal.toFixed(0);
+        
+        if (progress < 1) {
+            window.requestAnimationFrame(step);
+        }
+    };
+    window.requestAnimationFrame(step);
+}
+
 // --- ПІДКЛЮЧЕННЯ ---
 const ws = new WebSocket("wss://diploma-iot-server.onrender.com/ws");
 
@@ -40,18 +60,24 @@ ws.onmessage = function(event) {
     const data = JSON.parse(event.data);
     const currentTime = new Date().toLocaleTimeString();
 
-    // ПРИМУСОВО ПЕРЕТВОРЮЄМО В ЧИСЛА
     const noise = parseFloat(data.noise);
     const vibration = parseFloat(data.vibration);
 
-    document.getElementById('noiseValue').innerText = noise.toFixed(0);
-    document.getElementById('vibroValue').innerText = vibration.toFixed(2);
+    // 2. АНІМАЦІЯ ЦИФР: Замість різкого перемикання, запускаємо плавний перебіг
+    const noiseEl = document.getElementById('noiseValue');
+    const vibroEl = document.getElementById('vibroValue');
+    
+    const currentNoise = parseFloat(noiseEl.innerText) || 0;
+    const currentVibro = parseFloat(vibroEl.innerText) || 0;
+
+    animateValue(noiseEl, currentNoise, noise, 300, false);
+    animateValue(vibroEl, currentVibro, vibration, 300, true);
 
     let isAnomaly = false;
     let anomalyMessage = "";
     let anomalyLevel = "";
 
-    // 1. Аналіз шуму
+    // Аналіз шуму
     if (noise > THRESHOLD_NOISE) {
         document.getElementById('noiseStatus').innerHTML = '<span class="badge bg-danger">ШУМНО!</span>';
         anomalyMessage = "Перевищення шуму";
@@ -61,7 +87,7 @@ ws.onmessage = function(event) {
         document.getElementById('noiseStatus').innerHTML = '<span class="badge bg-success">Норма</span>';
     }
 
-    // 2. Аналіз вібрації
+    // Аналіз вібрації
     if (vibration > THRESHOLD_VIBRO_CRIT) {
         document.getElementById('vibroStatus').innerHTML = '<span class="badge bg-danger">КРИТИЧНО!</span>';
         anomalyMessage = "АВАРІЙНА ВІБРАЦІЯ";
@@ -76,7 +102,7 @@ ws.onmessage = function(event) {
         document.getElementById('vibroStatus').innerHTML = '<span class="badge bg-success">Норма</span>';
     }
 
-    // 3. Запис у журнал (з перевіркою часу)
+    // Запис у журнал
     const now = Date.now();
     if (isAnomaly && (now - lastLogTime > LOG_COOLDOWN)) {
         console.log("⚠️ Аномалія зафіксована:", anomalyMessage);
@@ -84,7 +110,7 @@ ws.onmessage = function(event) {
         lastLogTime = now;
     }
 
-    // 4. Стан системи
+    // Стан системи
     const sysState = document.getElementById('systemState');
     if (isAnomaly) {
         sysState.innerText = "ВИЯВЛЕНО АНОМАЛІЮ";
