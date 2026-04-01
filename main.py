@@ -1,12 +1,13 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import json
+import os
 
 app = FastAPI()
 
-# Дозволяємо підключення до нашого API з будь-яких джерел (CORS)
+# Дозволяємо всі підключення (CORS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,39 +16,77 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Описуємо структуру даних, яку чекаємо від мікроконтролера
+# 1. ОНОВЛЕНА МОДЕЛЬ ДАНИХ (тепер включає статус)
 class SensorData(BaseModel):
     noise: float
     vibration: float
+    status: str  # Додаємо це поле, щоб отримувати статус від ESP32
 
-# Список для зберігання всіх відкритих веб-сторінок (клієнтів)
-active_connections = []
+# Список активних WebSocket-клієнтів (веб-сторінок)
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
 
-# WebSocket-ендпоінт для зв'язку з веб-сайтом у реальному часі
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        print(f"New client connected. Total: {len(self.active_connections)}")
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+            print(f"Client disconnected. Remaining: {len(self.active_connections)}")
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                # Якщо з'єднання "бите" — видаляємо його пізніше
+                pass
+
+manager = ConnectionManager()
+
+# WebSocket-ендпоінт
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    active_connections.append(websocket)
+    await manager.connect(websocket)
     try:
         while True:
-            # Тримаємо з'єднання відкритим
+            # Просто підтримуємо зв'язок
             await websocket.receive_text()
-    except:
-        # Якщо сторінку закрили — видаляємо клієнта зі списку
-        active_connections.remove(websocket)
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        print(f"WebSocket Error: {e}")
+        manager.disconnect(websocket)
 
-# HTTP-ендпоінт для прийому даних від мікроконтролера (ESP32)
+# HTTP-ендпоінт для ESP32
 @app.post("/api/sensor-data")
 async def receive_data(data: SensorData):
-    # Пакуємо отримані дані у JSON
-    message = json.dumps({"noise": data.noise, "vibration": data.vibration})
+    # 2. ФОРМУЄМО ПОВНИЙ ПАКЕТ ДАНИХ ДЛЯ САЙТУ
+    payload = {
+        "noise": data.noise,
+        "vibration": data.vibration,
+        "status": data.status  # Передаємо статус далі на сайт
+    }
     
-    # Миттєво розсилаємо ці дані на всі відкриті дашборди
-    for connection in active_connections:
-         await connection.send_text(message)
-            
+    message = json.dumps(payload)
+    
+    # Виводимо в консоль сервера для контролю
+    print(f"Received from ESP32: {payload}")
+    
+    # Розсилаємо на всі відкриті вкладки браузера
+    await manager.broadcast(message)
+    
     return {"status": "success", "message": "Data broadcasted"}
 
+# Головна сторінка для перевірки, чи живий сервер
+@app.get("/")
+async def root():
+    return {"message": "VibroGuard Server is running"}
+
 if __name__ == "__main__":
-    # Запуск сервера на локальному IP, порт 8000
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # На Render порт береться зі змінних оточення (PORT)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
