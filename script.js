@@ -40,7 +40,7 @@ const vibroChart = new Chart(ctxVibro, {
     data: { 
         labels: [], 
         datasets: [{ 
-            label: 'Вібрація (m/s²)', 
+            label: 'Вібрація (mm/s)', 
             borderColor: '#ffc107', 
             backgroundColor: 'rgba(255, 193, 7, 0.1)', 
             data: [], 
@@ -85,7 +85,7 @@ ws.onmessage = function(event) {
     // 3. Інтелектуальний аналіз: Перевірка вібрації
     if (data.vibration > THRESHOLD_VIBRO) {
         document.getElementById('vibroStatus').innerHTML = '<span class="badge bg-danger status-badge">Аномальна вібрація!</span>';
-        logAnomaly(currentTime, 'Пікова вібрація', data.vibration + ' m/s²', 'danger');
+        logAnomaly(currentTime, 'Пікова вібрація', data.vibration + ' mm/s', 'danger');
         isAnomaly = true;
     } else {
         document.getElementById('vibroStatus').innerHTML = '<span class="badge bg-success status-badge">В нормі</span>';
