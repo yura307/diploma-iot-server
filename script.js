@@ -7,46 +7,26 @@ const MAX_LOG_ROWS = 10;
 let lastLogTime = 0; 
 const LOG_COOLDOWN = 2000; 
 
-// 1. АНІМАЦІЯ ГРАФІКІВ: Плавний перехід за 300 мс (синхронно з ESP32)
+// 1. МАКСИМАЛЬНА ШВИДКІСТЬ: Анімація графіка вимкнена (duration: 0)
 const commonOptions = { 
     responsive: true, 
     maintainAspectRatio: false, 
-    animation: { 
-        duration: 300, 
-        easing: 'linear' 
-    }, 
+    animation: { duration: 0 }, 
     scales: { x: { display: true }, y: { beginAtZero: true } } 
 };
 
 // --- ІНІЦІАЛІЗАЦІЯ ГРАФІКІВ ---
 const noiseChart = new Chart(document.getElementById('noiseChart'), {
     type: 'line',
-    data: { labels: [], datasets: [{ label: 'Шум (дБ)', borderColor: '#0d6efd', data: [], fill: true, tension: 0.4 }] },
+    data: { labels: [], datasets: [{ label: 'Шум (дБ)', borderColor: '#0d6efd', data: [], fill: true, tension: 0.1 }] }, // tension: 0.1 робить лінію більш різкою
     options: commonOptions
 });
 
 const vibroChart = new Chart(document.getElementById('vibroChart'), {
     type: 'line',
-    data: { labels: [], datasets: [{ label: 'Вібрація (mm/s)', borderColor: '#ffc107', data: [], fill: true, tension: 0.4 }] },
+    data: { labels: [], datasets: [{ label: 'Вібрація (mm/s)', borderColor: '#ffc107', data: [], fill: true, tension: 0.1 }] },
     options: commonOptions
 });
-
-// --- ФУНКЦІЯ ПЛАВНОЇ ЗМІНИ ЧИСЕЛ ---
-function animateValue(obj, start, end, duration, isFloat) {
-    let startTimestamp = null;
-    const step = (timestamp) => {
-        if (!startTimestamp) startTimestamp = timestamp;
-        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-        const currentVal = start + progress * (end - start);
-        
-        obj.innerText = isFloat ? currentVal.toFixed(2) : currentVal.toFixed(0);
-        
-        if (progress < 1) {
-            window.requestAnimationFrame(step);
-        }
-    };
-    window.requestAnimationFrame(step);
-}
 
 // --- ПІДКЛЮЧЕННЯ ---
 const ws = new WebSocket("wss://diploma-iot-server.onrender.com/ws");
@@ -63,15 +43,9 @@ ws.onmessage = function(event) {
     const noise = parseFloat(data.noise);
     const vibration = parseFloat(data.vibration);
 
-    // 2. АНІМАЦІЯ ЦИФР: Замість різкого перемикання, запускаємо плавний перебіг
-    const noiseEl = document.getElementById('noiseValue');
-    const vibroEl = document.getElementById('vibroValue');
-    
-    const currentNoise = parseFloat(noiseEl.innerText) || 0;
-    const currentVibro = parseFloat(vibroEl.innerText) || 0;
-
-    animateValue(noiseEl, currentNoise, noise, 300, false);
-    animateValue(vibroEl, currentVibro, vibration, 300, true);
+    // 2. МИТТЄВЕ ОНОВЛЕННЯ ЦИФР БЕЗ ЗАТРИМОК
+    document.getElementById('noiseValue').innerText = noise.toFixed(0);
+    document.getElementById('vibroValue').innerText = vibration.toFixed(2);
 
     let isAnomaly = false;
     let anomalyMessage = "";
@@ -120,6 +94,7 @@ ws.onmessage = function(event) {
         sysState.className = "text-success fw-bold";
     }
 
+    // 3. Миттєве малювання нових точок
     updateChart(noiseChart, currentTime, noise);
     updateChart(vibroChart, currentTime, vibration);
 };
