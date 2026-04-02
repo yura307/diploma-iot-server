@@ -1,6 +1,6 @@
 // --- КОНФІГУРАЦІЯ (Три рівні) ---
 // Пороги для шуму (дБ)
-const THRESHOLD_NOISE_WARN = 75; 
+const THRESHOLD_NOISE_WARN = 65; 
 const THRESHOLD_NOISE_CRIT = 85; 
 
 // Пороги для вібрації (m/s²)
