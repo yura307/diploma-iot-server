@@ -15,13 +15,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Описуємо структуру даних, яку чекаємо від мікроконтролера
+# Описуємо структуру даних (ДОДАНО ПОЛЕ status)
 class SensorData(BaseModel):
     noise: float
     vibration: float
+    status: str
 
 # Список для зберігання всіх відкритих веб-сторінок (клієнтів)
 active_connections = []
+
+# Головна сторінка (потрібна, щоб швидко перевірити, чи живий сервер на Render)
+@app.get("/")
+async def root():
+    return {"message": "VibroGuard Server is running perfectly!"}
 
 # WebSocket-ендпоінт для зв'язку з веб-сайтом у реальному часі
 @app.websocket("/ws")
@@ -34,17 +40,25 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except:
         # Якщо сторінку закрили — видаляємо клієнта зі списку
-        active_connections.remove(websocket)
+        if websocket in active_connections:
+            active_connections.remove(websocket)
 
 # HTTP-ендпоінт для прийому даних від мікроконтролера (ESP32)
 @app.post("/api/sensor-data")
 async def receive_data(data: SensorData):
-    # Пакуємо отримані дані у JSON
-    message = json.dumps({"noise": data.noise, "vibration": data.vibration})
+    # Пакуємо отримані дані у JSON (ДОДАНО status)
+    message = json.dumps({
+        "noise": data.noise, 
+        "vibration": data.vibration,
+        "status": data.status
+    })
     
     # Миттєво розсилаємо ці дані на всі відкриті дашборди
     for connection in active_connections:
-         await connection.send_text(message)
+        try:
+            await connection.send_text(message)
+        except:
+            pass
             
     return {"status": "success", "message": "Data broadcasted"}
 
