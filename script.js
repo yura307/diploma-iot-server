@@ -4,8 +4,8 @@ const THRESHOLD_NOISE_WARN = 65;
 const THRESHOLD_NOISE_CRIT = 85; 
 
 // Пороги для вібрації (m/s²)
-const THRESHOLD_VIBRO_WARN = 1.0; 
-const THRESHOLD_VIBRO_CRIT = 3.0; 
+const THRESHOLD_VIBRO_WARN = 1.5; 
+const THRESHOLD_VIBRO_CRIT = 3.5; 
 
 // Змінні для захисту від спаму в журналі
 let lastLogTime = 0;
