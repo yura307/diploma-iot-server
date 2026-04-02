@@ -1,7 +1,7 @@
 // --- КОНФІГУРАЦІЯ ---
 // Порогові значення для виявлення аномалій
 const THRESHOLD_NOISE = 85; 
-const THRESHOLD_VIBRO = 5.0;
+const THRESHOLD_VIBRO = 3.0; // Знижено поріг, бо чисте прискорення (m/s²) має менші цифри
 
 // Змінні для захисту від спаму в журналі
 let lastLogTime = 0;
@@ -37,14 +37,14 @@ const noiseChart = new Chart(ctxNoise, {
     options: commonOptions
 });
 
-// Графік вібрації (ВИПРАВЛЕНО НА mm/s)
+// Графік вібрації (ВИПРАВЛЕНО НА m/s²)
 const ctxVibro = document.getElementById('vibroChart').getContext('2d');
 const vibroChart = new Chart(ctxVibro, {
     type: 'line',
     data: { 
         labels: [], 
         datasets: [{ 
-            label: 'Вібрація (mm/s)', 
+            label: 'Вібрація (m/s²)', 
             borderColor: '#ffc107', 
             backgroundColor: 'rgba(255, 193, 7, 0.1)', 
             data: [], 
@@ -96,7 +96,7 @@ ws.onmessage = function(event) {
         document.getElementById('vibroStatus').innerHTML = '<span class="badge bg-danger status-badge">Аномальна вібрація!</span>';
         isAnomaly = true;
         anomalyMsg = 'Пікова вібрація';
-        anomalyVal = data.vibration.toFixed(1) + ' mm/s';
+        anomalyVal = data.vibration.toFixed(1) + ' m/s²'; // Виправлено одиниці вимірювання
         anomalyLvl = 'danger';
     } else {
         document.getElementById('vibroStatus').innerHTML = '<span class="badge bg-success status-badge">В нормі</span>';
