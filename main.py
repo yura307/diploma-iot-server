@@ -1,17 +1,12 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import json
-import logging
 
-# Налаштування логування (щоб бачити помилки в консолі Render)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+app = FastAPI()
 
-app = FastAPI(title="VibroGuard Backend")
-
-# Дозволяємо підключення з будь-яких адрес
+# Дозволяємо підключення до нашого API з будь-яких джерел (CORS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,82 +15,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Модель даних від ESP32
+# Описуємо структуру даних, яку чекаємо від мікроконтролера
 class SensorData(BaseModel):
     noise: float
     vibration: float
-    status: str
 
-# Менеджер WebSocket з'єднань
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
+# Список для зберігання всіх відкритих веб-сторінок (клієнтів)
+active_connections = []
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(f"Клієнт підключився. Всього: {len(self.active_connections)}")
-
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-            logger.info(f"Клієнт відключився. Залишилось: {len(self.active_connections)}")
-
-    async def broadcast(self, message: str):
-        # Робимо копію списку, щоб уникнути помилок при видаленні під час ітерації
-        for connection in self.active_connections[:]:
-            try:
-                await connection.send_text(message)
-            except Exception as e:
-                logger.error(f"Помилка відправки: {e}")
-                self.disconnect(connection)
-
-manager = ConnectionManager()
-
-# --- ЕНДПОІНТИ ---
-
-# Головна сторінка для перевірки (щоб розбудити сервер)
-@app.get("/")
-async def root():
-    return {
-        "status": "online",
-        "message": "VibroGuard Server is running",
-        "clients_connected": len(manager.active_connections)
-    }
-
-# Канал для сайту (WebSocket)
+# WebSocket-ендпоінт для зв'язку з веб-сайтом у реальному часі
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    await websocket.accept()
+    active_connections.append(websocket)
     try:
         while True:
-            # Чекаємо на будь-яке повідомлення (keep-alive)
+            # Тримаємо з'єднання відкритим
             await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-    except Exception as e:
-        logger.error(f"WebSocket Error: {e}")
-        manager.disconnect(websocket)
+    except:
+        # Якщо сторінку закрили — видаляємо клієнта зі списку
+        active_connections.remove(websocket)
 
-# Прийом даних від ESP32
+# HTTP-ендпоінт для прийому даних від мікроконтролера (ESP32)
 @app.post("/api/sensor-data")
 async def receive_data(data: SensorData):
-    # Формуємо JSON для сайту
-    payload = {
-        "noise": data.noise,
-        "vibration": data.vibration,
-        "status": data.status
-    }
+    # Пакуємо отримані дані у JSON
+    message = json.dumps({"noise": data.noise, "vibration": data.vibration})
     
-    # Конвертуємо в рядок і розсилаємо всім клієнтам
-    message = json.dumps(payload)
-    await manager.broadcast(message)
-    
-    # Виводимо в лог (корисно для відладки на Render)
-    # logger.info(f"Дані відправлено на сайт: {payload}")
-    
-    return {"status": "success"}
+    # Миттєво розсилаємо ці дані на всі відкриті дашборди
+    for connection in active_connections:
+         await connection.send_text(message)
+            
+    return {"status": "success", "message": "Data broadcasted"}
 
 if __name__ == "__main__":
-    # Локальний запуск (для тестів)
+    # Запуск сервера на локальному IP, порт 8000
     uvicorn.run(app, host="0.0.0.0", port=8000)
